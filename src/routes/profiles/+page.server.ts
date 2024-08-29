@@ -1,12 +1,13 @@
 // import { error } from '@sveltejs/kit';
 import { createPool, sql } from '@vercel/postgres'
-import { POSTGRES_URL } from '$env/static/private'
+const POSTGRES_URL="postgres://default:cTgvlRpM58EW@ep-bold-feather-a1eak2dq-pooler.ap-southeast-1.aws.neon.tech/verceldb?sslmode=require"
+
 
 export async function load() {
   const db = createPool({ connectionString: POSTGRES_URL })
 
   try {
-    const { rows: names } = await db.query('SELECT * FROM names')
+    const { rows: names } = await db.query('SELECT * FROM names order by id')
     return {
       names: names,
     }
@@ -16,9 +17,9 @@ export async function load() {
       )
       // Table is not created yet
       await seed()
-      const { rows: names } = await db.query('SELECT * FROM names')
+      const { rows: names } = await db.query('SELECT * FROM names order by id')
       return {
-        names: names
+        users: names
       }
     } 
 }
@@ -34,7 +35,7 @@ async function seed() {
     );
     `
 
-  console.log(`Created "users" table`)
+  console.log('Created "users" table')
 
   const users = await Promise.all([
     client.sql`
@@ -53,7 +54,7 @@ async function seed() {
           ON CONFLICT (email) DO NOTHING;
       `,
   ])
-  console.log(`Seeded ${users.length} users`)
+  console.log('Seeded ${users.length} users')
 
   return {
     createTable,
@@ -61,40 +62,67 @@ async function seed() {
   }
 }
 
+async function updateUser(user: { id: any; name: any; email: any }) {
+    console.log('user', user);
+    const db = createPool({ connectionString: POSTGRES_URL })
+    const client = await db.connect();
+
+    const result = await client.sql`UPDATE names SET name = ${user.name}, email = ${user.email} WHERE id = ${user.id}`
+
+    return {
+      result
+    }
+}
+
 /** @type {import('./$types').Actions} */
 export const actions = {
 	
-  // update: async ({ request }) => {
-  //   const data = await request.formData();
-  //   const db = createPool({ connectionString: POSTGRES_URL })
-  //   const client = await db.connect();
+  update: async ({ request }: { request: any }) => {
+    const req = await request.formData();
 
-  //   const email = data.get('email');
-	// 	const name = data.get('name');
+    const id = req.get('id');
+    const name = req.get('name');
+    const email = req.get('email');
 
-  //   const updateUser = await client.sql`
-  //   UPDATE names
-  //   SET email = ${email}, name = ${name}
-  //   WHERE     ;`
-	
-	// 	return { success: true };
-	// },
+    const data = {
+      id, name, email
+    }
 
-  delete: async ({ request }) => {
+    let updateRes = {
+      error : false, email : email, name, messsage : ''
+    }
+
+    try {
+      const res = await updateUser(data);
+      console.log('api request ran');
+      console.log(res);
+
+
+    } catch (error) {
+        console.log('api request errored');
+        console.log(error)
+        updateRes.error = true;
+        updateRes.messsage = (error as Error).message;
+    }finally{
+      return updateRes
+    }
+	},
+
+  delete: async ({ request }: { request: any }) => {
     const data = await request.formData();
     const db = createPool({ connectionString: POSTGRES_URL })
     const client = await db.connect();
 
-    const id = data.get('id');
+    const id = String(data.get('id'));
 
     const deleteUser = await client.sql`
     DELETE FROM names
     WHERE id = ${id};`
 	
-		return { success: true };
+		return { deleted: true };
 	},
 
-	create: async ({request}) => {
+  create: async ({request}: { request: any }) => {
 		const data = await request.formData();
     const db = createPool({ connectionString: POSTGRES_URL })
     const client = await db.connect();
@@ -103,13 +131,10 @@ export const actions = {
 		const name = data.get('name');
 
     const createUser = await client.sql`
-      INSERT INTO names (name, email)
-      VALUES (${name}, ${email})
-      ON CONFLICT (email) DO NOTHING;
-    `
+          INSERT INTO names (name, email)
+          VALUES (${String(name)}, ${String(email)})
+          ON CONFLICT (email) DO NOTHING;
+        `
     return { success: true };
 	}
 };
-
-
-
